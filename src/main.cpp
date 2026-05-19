@@ -2,9 +2,12 @@
 #include "lemlib/api.hpp" // IWYU pragma: keep
 #include "pros/adi.hpp"
 #include <algorithm>	// IWYU pragma: keep
+#include <cmath>
 
-bool clawToggleState = false; // variable to keep track of the claw's state (open or closed)
-bool fourBarLifted = false; // variable to keep track of the four bar lift's state (lifted or not lifted)
+bool claw_toggle_state = false; // variable to keep track of the claw's state (open or closed)
+bool four_bar_lifted = false; // variable to keep track of the four bar lift's state (lifted or not lifted)
+float four_bar_height = 0; // variable to keep track of the four bar lift's height
+int four_bar_target_height = 0; // variable to keep track of the four bar lift's target height
 
 pros::Controller Maverick(pros::E_CONTROLLER_MASTER);
 pros::Controller Goose(pros::E_CONTROLLER_PARTNER);
@@ -13,9 +16,9 @@ pros::Controller Goose(pros::E_CONTROLLER_PARTNER);
 // left motor group
 pros::MotorGroup left_motor_group({-1, -10}, pros::MotorGearset::blue);
 // right motor group
-pros::MotorGroup right_motor_group({11, 20}, pros::MotorGearset::blue);
+pros::MotorGroup right_motor_group({8, 9}, pros::MotorGearset::blue);
 // four bar lift motor
-pros::MotorGroup four_bar_lift({12, 13}, pros::MotorGearset::green);
+pros::MotorGroup four_bar_lift({-12, 13}, pros::MotorGearset::green);
 
 // intake motor
 pros::Motor intake(14, pros::MotorGearset::blue);
@@ -32,47 +35,48 @@ lemlib::Drivetrain drivetrain(&left_motor_group, // left motor group
                               2 // horizontal drift is 2 (for now)
 );
 
+// distance sensor
+pros::Distance four_bar_distance(15);
 // imu
-pros::Imu imu(21);
+pros::Imu imu(7);
 // horizontal tracking wheel encoder 1
 pros::Rotation horizontal_encoder_1(19);
 // horizontal tracking wheel encoder 2
 pros::Rotation horizontal_encoder_2(18);
 // vertical tracking wheel encoder 1
-pros::Rotation vertical_encoder_1(17);
+pros::Rotation vertical_encoder_1(-16);
 // vertical tracking wheel encoder 2
-pros::Rotation vertical_encoder_2(16);
+pros::Rotation vertical_encoder_2(17);
 // horizontal tracking wheel 1
-lemlib::TrackingWheel horizontal_tracking_wheel_1(&horizontal_encoder_1, lemlib::Omniwheel::NEW_275, -5.75);
+lemlib::TrackingWheel horizontal_tracking_wheel_1(&horizontal_encoder_1, lemlib::Omniwheel::NEW_2, -5.75);
 // horizontal tracking wheel 2
-lemlib::TrackingWheel horizontal_tracking_wheel_2(&horizontal_encoder_2, lemlib::Omniwheel::NEW_275, -5.75);
+lemlib::TrackingWheel horizontal_tracking_wheel_2(&horizontal_encoder_2, lemlib::Omniwheel::NEW_2, -5.75);
 // vertical tracking wheel 1
-lemlib::TrackingWheel vertical_tracking_wheel_1(&vertical_encoder_1, lemlib::Omniwheel::NEW_275, -2.5);
+lemlib::TrackingWheel vertical_tracking_wheel_1(&vertical_encoder_1, lemlib::Omniwheel::NEW_2, 2.6);
 // vertical tracking wheel 2
-lemlib::TrackingWheel vertical_tracking_wheel_2(&vertical_encoder_2, lemlib::Omniwheel::NEW_275, -2.5);
-
+lemlib::TrackingWheel vertical_tracking_wheel_2(&vertical_encoder_2, lemlib::Omniwheel::NEW_2, -2.5);
 // odometry settings
 lemlib::OdomSensors sensors(&vertical_tracking_wheel_1, // vertical tracking wheel 1
-                            &vertical_tracking_wheel_2, // vertical tracking wheel 2 
-                            &horizontal_tracking_wheel_1, // horizontal tracking wheel 1
-                            &horizontal_tracking_wheel_2, // horizontal tracking wheel 2
+                            nullptr, // vertical tracking wheel 2 
+                            nullptr, // horizontal tracking wheel 1
+                            nullptr, // horizontal tracking wheel 2
                             &imu // inertial sensor
 );
 
 // lateral PID controller
-lemlib::ControllerSettings lateral_controller(10, // proportional gain (kP)
+lemlib::ControllerSettings lateral_controller(13, // proportional gain (kP)
                                               0, // integral gain (kI)
                                               3, // derivative gain (kD)
-                                              3, // anti windup
-                                              1, // small error range, in inches
-                                              100, // small error range timeout, in milliseconds
-                                              3, // large error range, in inches
-                                              500, // large error range timeout, in milliseconds
-                                              20 // maximum acceleration (slew)
+                                              0, // anti windup
+                                              0, // small error range, in inches
+                                              0, // small error range timeout, in milliseconds
+                                              0, // large error range, in inches
+                                              0, // large error range timeout, in milliseconds
+                                              0 // maximum acceleration (slew)
 );
 
 // angular PID controller
-lemlib::ControllerSettings angular_controller(2, // proportional gain (kP)
+lemlib::ControllerSettings angular_controller(2.23, // proportional gain (kP)
                                               0, // integral gain (kI)
                                               10, // derivative gain (kD)
                                               3, // anti windup
@@ -107,6 +111,13 @@ void initialize() {
     });
 }
 
+void autonomous() {
+    // set position to x:0, y:0, heading:0
+    chassis.setPose(0, 0, 0);
+    // turn to face heading 90 with a very long timeout
+    chassis.moveToPose(0, 24, 0, 100000);
+}
+
 void opcontrol() {
     // loop forever
     while (true) {
@@ -119,10 +130,10 @@ void opcontrol() {
 
 		// four bar manual controls (Temporary)
 		if (Maverick.get_digital(pros::E_CONTROLLER_DIGITAL_L1)) {
-			four_bar_lift.move(50);
+			four_bar_lift.move(100);
 		} 
 		else if (Maverick.get_digital(pros::E_CONTROLLER_DIGITAL_L2)) {
-			four_bar_lift.move(-50);
+			four_bar_lift.move(-100);
 		} 
 		else {
 			four_bar_lift.move(0);
@@ -140,10 +151,10 @@ void opcontrol() {
 			intake.move(0);
 		}
 
-		//claw manual controls
+		//claw manual controls (Toggle)
 		if (Maverick.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_LEFT)) {
-            claw_piston.set_value(clawToggleState);
-            clawToggleState = !clawToggleState;
+            claw_piston.set_value(claw_toggle_state);
+            claw_toggle_state = !claw_toggle_state;
         }
 
         // delay to save resources

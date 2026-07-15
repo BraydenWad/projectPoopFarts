@@ -5,15 +5,15 @@
 #include <algorithm>	// IWYU pragma: keep
 #include <cmath>
 
-int cascadeHeightBottom = 0; // height for level 0 (rotations)
-int cascadeHeight1 = 0; // height for level 1 (rotations)
-int cascadeHeight2 = 0; // height for level 2 (rotations)
-int cascadeHeight3 = 0; // height for level 3 (rotations)
-int cascadeHeight4 = 0; // height for level 4 (rotations)
-int cascadeHeight5 = 0; // height for level 5 (rotations)
-int armLeftPose = 0; //absolute position for arm to be in left position (rotations)
-int armRightPose = 0; //absolute position for arm to be in right position (rotations)
-int armDownPose = 0; //absolute position for arm to be in down position (rotations)
+int cascadeHeightBottom = 0; // height for level 0 (degrees)
+int cascadeHeight1 = 0; // height for level 1 (degrees)
+int cascadeHeight2 = 0; // height for level 2 (degrees)
+int cascadeHeight3 = 0; // height for level 3 (degrees)
+int cascadeHeight4 = 0; // height for level 4 (degrees)
+int cascadeHeight5 = 0; // height for level 5 (degrees)
+int armLeftPose = 0; //absolute position for arm to be in left position (degrees)
+int armRightPose = 0; //absolute position for arm to be in right position (degrees)
+int armDownPose = 0; //absolute position for arm to be in down position (degrees)
 
 double cascadeKp = 0.3; // proportional gain for cascade PID
 double cascadeKi = 0.0; // integral gain for cascade PID
@@ -39,11 +39,11 @@ pros::MotorGroup left_motor_group({-1, -11}, pros::MotorGearset::blue);
 // right motor group
 pros::MotorGroup right_motor_group({10, 20}, pros::MotorGearset::blue);
 // four bar lift motor group
-pros::MotorGroup cascade({12, -13}, pros::MotorGearset::blue);
+pros::MotorGroup cascade({12, -14}, pros::MotorGearset::blue);
 //arm motor group
 pros::MotorGroup arm({19, -20}, pros::MotorGearset::green);
 // intake motor group
-pros::MotorGroup intake({14, -15}, pros::MotorGearset::green);
+pros::MotorGroup intake({15, -16}, pros::MotorGearset::green);
 
 // claw piston
 pros::adi::DigitalOut claw_piston('A');
@@ -219,9 +219,11 @@ void autonomous() {
 void opcontrol() {
     cascade.tare_position(); //HIGHLY TEMPORARY, REMOVE LATER
     arm.tare_position(); //HIGHLY TEMPORARY, REMOVE LATER
+    pros::Task armTaskHandle(armPIDTask);
+    pros::Task cascadeTaskHandle(cascadePIDTask);
 
-    armTargetValue = 3600;
-    pros::Task liftTaskHandle(armPIDTask);
+    // armTargetValue = 3600;
+    // pros::Task liftTaskHandle(armPIDTask);
 
 
     // loop forever
@@ -234,17 +236,12 @@ void opcontrol() {
         chassis.curvature(leftY, rightX);
 
 		//Cascade controls
-        if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_DOWN))         {cascade.move_absolute(cascadeHeightBottom, 127);}
-        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_RIGHT))   {cascade.move_absolute(cascadeHeight1, 127);}
-        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_UP))      {cascade.move_absolute(cascadeHeight2, 127);}
-        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_LEFT))    {cascade.move_absolute(cascadeHeight3, 127);}
-        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_L1))      {cascade.move_absolute(cascadeHeight4, 127);}
-        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_L2))      {cascade.move_absolute(cascadeHeight5, 127);}
-        //Manual cascade controls
-        // else if (Maverick.get_digital(pros::E_CONTROLLER_DIGITAL_L1))   {cascade.move_velocity(127);}
-        // else if (Maverick.get_digital(pros::E_CONTROLLER_DIGITAL_L2))   {cascade.move_velocity(-127);}
-        // else    {cascade.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
-        //         cascade.brake();}
+        if      (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_DOWN))    {cascadeTargetValue = 0;}
+        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_RIGHT))   {cascadeTargetValue = 360;}
+        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_UP))      {cascadeTargetValue = 720;}
+        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_LEFT))    {cascadeTargetValue = 1080;}
+        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_L1))      {cascadeTargetValue = 1440;}
+        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_L2))      {cascadeTargetValue = 1800;}
 
         //Arm controls
         if      (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_B))       {arm.move_absolute(armDownPose, 127);} //arm down position
@@ -253,9 +250,9 @@ void opcontrol() {
         else    {arm.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);}
 
         //Intake controls
-        if (Maverick.get_digital(pros::E_CONTROLLER_DIGITAL_R1))        {intake.move_velocity(127);} //intake
-        else if (Maverick.get_digital(pros::E_CONTROLLER_DIGITAL_R2))   {intake.move_velocity(-127);} //outtake
-        else {intake.move_velocity(0);} //stop intake
+        if      (Maverick.get_digital(pros::E_CONTROLLER_DIGITAL_R1))   {intake.move(127);} //intake
+        else if (Maverick.get_digital(pros::E_CONTROLLER_DIGITAL_R2))   {intake.move(-127);} //outtake
+        else    {intake.move(0);} //stop intake
 
 		//claw manual controls (Toggle)
 		if (Goose.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_R1)) {
@@ -263,7 +260,7 @@ void opcontrol() {
             clawToggleState = !clawToggleState;
         }
 
-        
+
 
         // delay to save resources
         pros::delay(25);

@@ -222,10 +222,6 @@ void opcontrol() {
     pros::Task armTaskHandle(armPIDTask);
     pros::Task cascadeTaskHandle(cascadePIDTask);
 
-    // armTargetValue = 3600;
-    // pros::Task liftTaskHandle(armPIDTask);
-
-
     // loop forever
     while (true) {
         // get left y and right x positions
@@ -236,17 +232,17 @@ void opcontrol() {
         chassis.curvature(leftY, rightX);
 
 		//Cascade controls
-        if      (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_DOWN))    {cascadeTargetValue = 0;}
-        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_RIGHT))   {cascadeTargetValue = 360;}
-        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_UP))      {cascadeTargetValue = 720;}
-        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_LEFT))    {cascadeTargetValue = 1080;}
-        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_L1))      {cascadeTargetValue = 1440;}
-        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_L2))      {cascadeTargetValue = 1800;}
+        if      (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_DOWN))    {cascadeTargetValue = cascadeHeightBottom;}
+        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_RIGHT))   {cascadeTargetValue = cascadeHeight1;}
+        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_UP))      {cascadeTargetValue = cascadeHeight2;}
+        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_LEFT))    {cascadeTargetValue = cascadeHeight3;}
+        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_L1))      {cascadeTargetValue = cascadeHeight4;}
+        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_L2))      {cascadeTargetValue = cascadeHeight5;}
 
         //Arm controls
-        if      (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_B))       {arm.move_absolute(armDownPose, 127);} //arm down position
-        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_A))       {arm.move_absolute(armRightPose, 127);} //arm right position
-        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_Y))       {arm.move_absolute(armLeftPose, 127);} //arm left position
+        if      (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_B))       {armTargetValue = armDownPose;} //arm down position
+        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_A))       {armTargetValue = armRightPose;} //arm right position
+        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_Y))       {armTargetValue = armLeftPose;} //arm left position
         else    {arm.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);}
 
         //Intake controls
@@ -255,15 +251,10 @@ void opcontrol() {
         else    {intake.move(0);} //stop intake
 
 		//claw manual controls (Toggle)
-		if (Goose.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_R1)) {
-            claw_piston.set_value(clawToggleState);
-            clawToggleState = !clawToggleState;
-        }
-
-
+		if (Goose.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_R1)) {claw_piston.set_value(clawToggleState);
+                                                                                clawToggleState = !clawToggleState;}
 
         // delay to save resources
         pros::delay(25);
-
 }
 }

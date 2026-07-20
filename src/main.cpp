@@ -1,18 +1,21 @@
 #include "main.h"
 #include "lemlib/api.hpp" // IWYU pragma: keep
+#include "pros/abstract_motor.hpp"
 #include "pros/adi.hpp"
+#include "pros/misc.h"
 #include "pros/rtos.hpp"
 #include <algorithm>	// IWYU pragma: keep
 #include <cmath>
 
 int cascadeHeightBottom = 0; // height for level 0 (degrees)
-int cascadeHeight1 = 0; // height for level 1 (degrees)
-int cascadeHeight2 = 0; // height for level 2 (degrees)
-int cascadeHeight3 = 0; // height for level 3 (degrees)
-int cascadeHeight4 = 0; // height for level 4 (degrees)
-int cascadeHeight5 = 0; // height for level 5 (degrees)
-int armLeftPose = 0; //absolute position for arm to be in left position (degrees)
-int armRightPose = 0; //absolute position for arm to be in right position (degrees)
+int cascadeHeight1 = 360; // height for level 1 (degrees)
+int cascadeHeight2 = 720; // height for level 2 (degrees)
+int cascadeHeight3 = 1080; // height for level 3 (degrees)
+int cascadeHeight4 = 1440; // height for level 4 (degrees)
+int cascadeHeight5 = 1800; // height for level 5 (degrees)
+
+int armFrontPose = 90*3; //absolute position for arm to be in front position (degrees)
+int armBackPose = -90*3; //absolute position for arm to be in back position (degrees)
 int armDownPose = 0; //absolute position for arm to be in down position (degrees)
 
 double cascadeKp = 0.3; // proportional gain for cascade PID
@@ -22,10 +25,10 @@ double cascadeKg = 0.0; // gravity compensation gravity for cascade PID
 double cascadePIDTarget = 0.0; // target position for cascade PID
 volatile double cascadeTargetValue = 0.0; // target position for cascade PID
 
-double armKp = 0.3; // proportional gain for arm PID
-double armKi = 0.0; // integral gain for arm PID
+double armKp = 0.4; // proportional gain for arm PID
+double armKi = 0.05; // integral gain for arm PID
 double armKd = 0.0; // derivative gain for arm PID
-double armKg = 0.0; // gravity compensation gravity for arm PID
+double armKg = 17.0; // gravity compensation gravity for arm PID
 double armPIDTarget = 0.0; // target position for arm PID
 volatile double armTargetValue = 0.0; // target position for arm PID
 
@@ -35,15 +38,15 @@ pros::Controller Maverick(pros::E_CONTROLLER_MASTER);
 pros::Controller Goose(pros::E_CONTROLLER_PARTNER);
 
 // left motor group
-pros::MotorGroup left_motor_group({-1, -11}, pros::MotorGearset::blue);
+pros::MotorGroup left_motor_group({-11, -12}, pros::MotorGearset::blue);
 // right motor group
-pros::MotorGroup right_motor_group({10, 20}, pros::MotorGearset::blue);
+pros::MotorGroup right_motor_group({19, 20}, pros::MotorGearset::blue);
 // four bar lift motor group
-pros::MotorGroup cascade({12, -14}, pros::MotorGearset::blue);
+pros::MotorGroup cascade({14, -17}, pros::MotorGearset::blue);
 //arm motor group
-pros::MotorGroup arm({19, -20}, pros::MotorGearset::green);
-// intake motor group
-pros::MotorGroup intake({15, -16}, pros::MotorGearset::green);
+pros::Motor arm(16, pros::MotorGearset::red);
+// intake motor 
+pros::Motor intake(9, pros::MotorGearset::green);
 
 // claw piston
 pros::adi::DigitalOut claw_piston('A');
@@ -58,15 +61,15 @@ lemlib::Drivetrain drivetrain(&left_motor_group, // left motor group
 );
 
 // imu
-pros::Imu imu(7);
+pros::Imu imu(6);
 // horizontal tracking wheel encoder 1
-pros::Rotation horizontal_encoder_1(1);
+pros::Rotation horizontal_encoder_1(2);
 // horizontal tracking wheel encoder 2
-pros::Rotation horizontal_encoder_2(2);
+pros::Rotation horizontal_encoder_2(3);
 // vertical tracking wheel encoder 1
-pros::Rotation vertical_encoder_1(-3);
+pros::Rotation vertical_encoder_1(-4);
 // vertical tracking wheel encoder 2
-pros::Rotation vertical_encoder_2(4);
+pros::Rotation vertical_encoder_2(5);
 // horizontal tracking wheel 1
 lemlib::TrackingWheel horizontal_tracking_wheel_1(&horizontal_encoder_1, lemlib::Omniwheel::NEW_2, -5.75);
 // horizontal tracking wheel 2
@@ -169,7 +172,7 @@ void armPIDTask(void* param) {
         
         // Calculate Integral (Accumulated Error)
         // Only integrate if we are close to the target to avoid "integral windup"
-        if (fabs(armError) < 50) { 
+        if (fabs(armError) < 85) { 
             armIntegral += armError;
         } else {
             armIntegral = 0;
@@ -179,15 +182,26 @@ void armPIDTask(void* param) {
         armDerivative = armError - armPrevError;
         armPrevError = armError;
         
+        // DYNAMIC GRAVITY: Scales automatically. 
+        // 0 at bottom (0°), Max positive at Front (90°), Max negative at Back (-90°)
+        // double dynamicGravity = armKg * sin(armCurrentPosition * M_PI / 180.0);
+
         // Calculate the total PID output power
-        double armOutputPower = (armError * armKp) + (armIntegral * armKi) + (armDerivative * armKd) + armKg;
+        double armOutputPower = (armError * armKp) + (armIntegral * armKi) + (armDerivative * armKd) /*+ dynamicGravity*/;
         
         // Cap the max/min bounds to match PROS .move() limits
         if (armOutputPower > 127) armOutputPower = 127;
         if (armOutputPower < -127) armOutputPower = -127;
         
+// DIAGNOSTIC PRINT LINES (Add these)
+// pros::lcd::print(4, "Target: %.1f", armTargetValue);
+// pros::lcd::print(5, "Actual Pos: %.1f", armCurrentPosition);
+// pros::lcd::print(6, "Power Sent: %.1f", armOutputPower);
+
         // Command the motor using PROS syntax
         arm.move(armOutputPower);
+
+
         pros::delay(20);
         
     }
@@ -241,9 +255,8 @@ void opcontrol() {
 
         //Arm controls
         if      (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_B))       {armTargetValue = armDownPose;} //arm down position
-        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_A))       {armTargetValue = armRightPose;} //arm right position
-        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_Y))       {armTargetValue = armLeftPose;} //arm left position
-        else    {arm.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);}
+        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_A))       {armTargetValue = armBackPose;} //arm right position
+        else if (Goose.get_digital(pros::E_CONTROLLER_DIGITAL_Y))       {armTargetValue = armFrontPose;} //arm left position
 
         //Intake controls
         if      (Maverick.get_digital(pros::E_CONTROLLER_DIGITAL_R1))   {intake.move(127);} //intake
@@ -253,6 +266,8 @@ void opcontrol() {
 		//claw manual controls (Toggle)
 		if (Goose.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_R1)) {claw_piston.set_value(clawToggleState);
                                                                                 clawToggleState = !clawToggleState;}
+
+        
 
         // delay to save resources
         pros::delay(25);
